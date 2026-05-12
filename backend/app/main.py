@@ -1,4 +1,5 @@
 import random
+import os
 from datetime import datetime
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Query
