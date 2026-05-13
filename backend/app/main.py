@@ -1,4 +1,5 @@
 import random
+import os
 from datetime import datetime
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Query
@@ -13,10 +14,11 @@ from .models import AcquiredModel, Match, Prediction, PredictionModel, User
 from .schemas import DashboardSummary, MatchRead, ModelCreate, ModelRead, PredictionRead, PredictionRun, SyncResult, Token, UserCreate, UserRead
 
 load_dotenv()
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN")
 app = FastAPI(title="Goal Edge API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173",  FRONTEND_ORIGIN],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
