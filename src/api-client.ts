@@ -58,6 +58,9 @@ export type Model = {
   correctPredictions: number;
   totalPredictions: number;
   createdAt: string;
+  isOwned?: boolean;
+  isAcquired?: boolean;
+  accessSource?: "owned" | "acquired" | "public";
   weightTeamForm: number;
   weightHomeAdvantage: number;
   weightInjuries: number;
@@ -92,6 +95,12 @@ export type MatchQuery = {
   country?: string;
   dateFrom?: string;
   dateTo?: string;
+};
+
+export type DashboardFilters = {
+  league?: string;
+  team?: string;
+  country?: string;
 };
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/$/, "");
@@ -213,19 +222,24 @@ export function useGetMatchPredictions(matchId: number, options?: any) {
 export function useRunPrediction() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: number; data: { matchId: number; userId?: number } }) =>
+    mutationFn: ({ id, data }: { id: number; data: { matchId: number } }) =>
       apiRequest<Prediction>("/predictions/run", { method: "POST", body: JSON.stringify({ modelId: id, matchId: data.matchId }) }),
     onSuccess: (prediction) => {
       queryClient.invalidateQueries({ queryKey: getGetMatchPredictionsQueryKey(prediction.matchId) });
       queryClient.invalidateQueries({ queryKey: ["predictions"] });
       queryClient.invalidateQueries({ queryKey: ["models"] });
+      queryClient.invalidateQueries({ queryKey: ["leaderboard"] });
     },
   });
 }
 
-export function useListModels(params?: { userId?: number }) {
+export function useListModels(params?: { userId?: number }, options?: any) {
   const qs = params?.userId ? `?user_id=${params.userId}` : "";
-  return useQuery({ queryKey: ["models", params ?? {}], queryFn: () => apiRequest<Model[]>(`/models${qs}`) });
+  return useQuery({ queryKey: ["models", params ?? {}], queryFn: () => apiRequest<Model[]>(`/models${qs}`), ...(options?.query ?? {}) });
+}
+
+export function useAvailableModels() {
+  return useQuery({ queryKey: ["models", "available"], queryFn: () => apiRequest<Model[]>("/models/available") });
 }
 
 export function useCreateModel() {
@@ -233,7 +247,10 @@ export function useCreateModel() {
   return useMutation({
     mutationFn: ({ data }: { data: Partial<Model> & { name: string; algorithmType: ModelInputAlgorithmType } }) =>
       apiRequest<Model>("/models", { method: "POST", body: JSON.stringify(data) }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["models"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["models"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+    },
   });
 }
 
@@ -281,20 +298,43 @@ export function useListMarketplace(params?: { algorithmType?: string; sortBy?: "
   return useQuery({ queryKey: ["marketplace", params], queryFn: () => apiRequest<any[]>(`/marketplace${search.toString() ? `?${search}` : ""}`) });
 }
 
-export function useGetLeaderboard(params?: { limit?: number }) {
-  return useQuery({ queryKey: ["leaderboard", params], queryFn: () => apiRequest<any[]>(`/leaderboard?limit=${params?.limit ?? 50}`) });
+export function useAcquireModel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ modelId }: { modelId: number }) =>
+      apiRequest<Model>(`/marketplace/${modelId}/copy`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["models"] });
+      queryClient.invalidateQueries({ queryKey: ["marketplace"] });
+    },
+  });
 }
 
-export function useListPredictions(params?: { userId?: number }) {
+export function useGetLeaderboard(params?: { limit?: number; league?: string; team?: string }) {
+  const search = new URLSearchParams();
+  search.set("limit", String(params?.limit ?? 50));
+  if (params?.league) search.set("league", params.league);
+  if (params?.team) search.set("team", params.team);
+  return useQuery({ queryKey: ["leaderboard", params], queryFn: () => apiRequest<any[]>(`/leaderboard?${search}`) });
+}
+
+export function useListPredictions(params?: { userId?: number }, options?: any) {
   const search = new URLSearchParams();
   if (params?.userId) search.set("user_id", String(params.userId));
-  return useQuery({ queryKey: ["predictions", params ?? {}], queryFn: () => apiRequest<Prediction[]>(`/predictions${search.toString() ? `?${search}` : ""}`) });
+  return useQuery({ queryKey: ["predictions", params ?? {}], queryFn: () => apiRequest<Prediction[]>(`/predictions${search.toString() ? `?${search}` : ""}`), ...(options?.query ?? {}) });
 }
 
 export function useGetUser(id: number, options?: any) {
   return useQuery({ queryKey: ["user", id], queryFn: () => apiRequest<User>(`/users/${id}`), ...(options?.query ?? {}) });
 }
 
-export function useGetDashboardSummary() {
-  return useQuery({ queryKey: ["dashboard-summary"], queryFn: () => apiRequest<{ totalModels: number; averageAccuracy: number }>("/dashboard/summary") });
+export function useGetDashboardSummary(filters?: DashboardFilters) {
+  const search = new URLSearchParams();
+  if (filters?.league) search.set("league", filters.league);
+  if (filters?.team) search.set("team", filters.team);
+  if (filters?.country) search.set("country", filters.country);
+  return useQuery({
+    queryKey: ["dashboard-summary", filters ?? {}],
+    queryFn: () => apiRequest<{ totalModels: number; averageAccuracy: number }>(`/dashboard/summary${search.toString() ? `?${search}` : ""}`),
+  });
 }

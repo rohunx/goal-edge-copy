@@ -72,6 +72,7 @@ class PredictionModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     owner = relationship("User", back_populates="models")
     predictions = relationship("Prediction", back_populates="model", cascade="all, delete-orphan")
+    acquisitions = relationship("AcquiredModel", back_populates="model", cascade="all, delete-orphan")
 
 class Prediction(Base):
     __tablename__ = "predictions"
@@ -97,3 +98,12 @@ class SavedMatch(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class AcquiredModel(Base):
+    __tablename__ = "acquired_models"
+    __table_args__ = (UniqueConstraint("user_id", "model_id", name="uq_user_acquired_model"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    model_id: Mapped[int] = mapped_column(ForeignKey("prediction_models.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    model = relationship("PredictionModel", back_populates="acquisitions")

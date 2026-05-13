@@ -1,4 +1,4 @@
-import { useListMarketplace } from "@/api-client";
+import { useAcquireModel, useAvailableModels, useListMarketplace } from "@/api-client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
-import { Store, Trophy, User, Target, Search, SlidersHorizontal } from "lucide-react";
+import { Store, Trophy, User, Target, Search, SlidersHorizontal, PlusCircle, CheckCircle2 } from "lucide-react";
 import { useState, useMemo } from "react";
 
 const ALGORITHM_LABELS: Record<string, string> = {
@@ -35,6 +35,9 @@ export default function Marketplace() {
   const [sortBy, setSortBy] = useState<"accuracy" | "price" | "popular" | "recent">("accuracy");
 
   const { data: listings, isLoading } = useListMarketplace({ algorithmType: algoFilter !== "all" ? algoFilter : undefined, sortBy });
+  const { data: availableModels } = useAvailableModels();
+  const acquireModel = useAcquireModel();
+  const availableIds = useMemo(() => new Set((availableModels ?? []).map((model) => model.id)), [availableModels]);
 
   const filtered = useMemo(() => {
     if (!listings) return [];
@@ -142,9 +145,21 @@ export default function Marketplace() {
                     <User className="w-3 h-3" />
                     <span className="font-semibold">{listing.sellerUsername}</span>
                   </div>
-                  <Link href={`/model/${listing.modelId}`}>
-                    <Button size="sm" className="uppercase text-xs font-bold tracking-wider h-7 px-3">View</Button>
-                  </Link>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant={availableIds.has(listing.modelId) ? "outline" : "default"}
+                      className="uppercase text-xs font-bold tracking-wider h-7 px-3 gap-1.5"
+                      disabled={availableIds.has(listing.modelId) || acquireModel.isPending}
+                      onClick={() => acquireModel.mutate({ modelId: listing.modelId })}
+                    >
+                      {availableIds.has(listing.modelId) ? <CheckCircle2 className="w-3 h-3" /> : <PlusCircle className="w-3 h-3" />}
+                      {availableIds.has(listing.modelId) ? "Added" : "Add"}
+                    </Button>
+                    <Link href={`/model/${listing.modelId}`}>
+                      <Button size="sm" variant="outline" className="uppercase text-xs font-bold tracking-wider h-7 px-3">View</Button>
+                    </Link>
+                  </div>
                 </CardFooter>
               </Card>
             );

@@ -10,6 +10,7 @@ import Marketplace from "@/pages/marketplace";
 import Builder from "@/pages/builder";
 import Leaderboard from "@/pages/leaderboard";
 import MyModels from "@/pages/my-models";
+import ActivePredictions from "@/pages/active-predictions";
 import MatchDetail from "@/pages/match-detail";
 import ModelDetail from "@/pages/model-detail";
 import AuthPage from "@/pages/auth";
@@ -27,6 +28,7 @@ function ProtectedRouter() {
         <Route path="/builder" component={Builder} />
         <Route path="/leaderboard" component={Leaderboard} />
         <Route path="/my-models" component={MyModels} />
+        <Route path="/active-predictions" component={ActivePredictions} />
         <Route path="/match/:id" component={MatchDetail} />
         <Route path="/model/:id" component={ModelDetail} />
         <Route component={NotFound} />

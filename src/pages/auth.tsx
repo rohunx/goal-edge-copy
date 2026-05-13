@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 import { useLocation } from "wouter";
-import { Target } from "lucide-react";
+import { BrandMark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,7 +24,7 @@ export default function AuthPage() {
     event.preventDefault();
     loginMutation.mutate({ username: loginUsername, password: loginPassword }, {
       onSuccess: () => {
-        toast({ title: "Logged in", description: "Welcome back to Goal Edge." });
+        toast({ title: "Logged in", description: "Welcome back to ForecastDIY." });
         setLocation("/");
       },
       onError: (error) => toast({ title: "Login failed", description: error instanceof Error ? error.message : "Check your credentials.", variant: "destructive" }),
@@ -47,12 +47,12 @@ export default function AuthPage() {
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <Card className="w-full max-w-md border-border shadow-xl">
         <CardHeader className="text-center space-y-3">
-          <div className="mx-auto h-12 w-12 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-            <Target className="h-7 w-7 text-primary" />
+          <div className="flex justify-center">
+            <BrandMark />
           </div>
           <div>
-            <CardTitle className="text-2xl font-black tracking-tight uppercase">GOAL<span className="text-primary">EDGE</span></CardTitle>
-            <CardDescription>Full-stack soccer analytics dashboard</CardDescription>
+            <CardTitle className="text-2xl font-black tracking-tight">Build Your Soccer Forecasts</CardTitle>
+            <CardDescription>Prediction models, marketplace picks, and match analytics</CardDescription>
           </div>
         </CardHeader>
         <CardContent>

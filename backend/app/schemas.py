@@ -74,6 +74,9 @@ class ModelRead(ModelCreate):
     correctPredictions: int
     totalPredictions: int
     createdAt: datetime
+    isOwned: bool = False
+    isAcquired: bool = False
+    accessSource: str = "public"
 
 class PredictionRun(BaseModel):
     matchId: int

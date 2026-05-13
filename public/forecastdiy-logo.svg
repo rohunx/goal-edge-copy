@@ -1,0 +1,24 @@
+<svg width="620" height="150" viewBox="0 0 620 150" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M24 78C33 32 73 15 111 29C144 41 151 72 134 98C114 128 73 130 42 111" stroke="url(#loopA)" stroke-width="17" stroke-linecap="round"/>
+  <path d="M28 64C59 99 108 106 140 49" stroke="url(#loopB)" stroke-width="15" stroke-linecap="round"/>
+  <circle cx="74" cy="78" r="27" fill="white" stroke="#D8E7FF" stroke-width="3"/>
+  <path d="M51 75C64 64 84 61 101 70" stroke="#F3132E" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M55 91C70 82 88 83 104 95" stroke="#1EB65B" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M63 58C76 55 91 58 102 66" stroke="#146BFF" stroke-width="3.5" stroke-linecap="round"/>
+  <text x="176" y="94" font-family="Inter, Arial, sans-serif" font-size="60" font-weight="800" letter-spacing="-2" fill="#0B1E38">Forecast</text>
+  <text x="438" y="94" font-family="Inter, Arial, sans-serif" font-size="60" font-weight="800" letter-spacing="-2" fill="#146BFF">DIY</text>
+  <defs>
+    <linearGradient id="loopA" x1="27" y1="38" x2="140" y2="113" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F3132E"/>
+      <stop offset="0.38" stop-color="#063EBA"/>
+      <stop offset="0.72" stop-color="#0789FF"/>
+      <stop offset="1" stop-color="#19B65B"/>
+    </linearGradient>
+    <linearGradient id="loopB" x1="26" y1="88" x2="146" y2="49" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFC21A"/>
+      <stop offset="0.22" stop-color="#F3132E"/>
+      <stop offset="0.6" stop-color="#005BFF"/>
+      <stop offset="1" stop-color="#008CFF"/>
+    </linearGradient>
+  </defs>
+</svg>

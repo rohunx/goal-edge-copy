@@ -1,5 +1,5 @@
 import { useParams } from "wouter";
-import { useGetMatch, useGetMatchPredictions, useListModels, useRunPrediction } from "@/api-client";
+import { useAvailableModels, useGetMatch, useGetMatchPredictions, useRunPrediction } from "@/api-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -102,7 +102,7 @@ export default function MatchDetail() {
   const { data: predictions, isLoading: loadingPredictions } = useGetMatchPredictions(matchId, {
     query: { enabled: !!matchId, queryKey: getGetMatchPredictionsQueryKey(matchId) }
   });
-  const { data: myModels } = useListModels({ userId: 1 });
+  const { data: availableModels } = useAvailableModels();
   const runPrediction = useRunPrediction();
 
   const [selectedModelId, setSelectedModelId] = useState<string>("");
@@ -111,7 +111,7 @@ export default function MatchDetail() {
     if (!selectedModelId) return;
     runPrediction.mutate({
       id: parseInt(selectedModelId, 10),
-      data: { matchId, userId: 1 }
+      data: { matchId }
     }, {
       onSuccess: () => {
         toast({ title: "Pick generated", description: "Your model has analyzed this match." });
@@ -298,20 +298,27 @@ export default function MatchDetail() {
                     <SelectValue placeholder="Choose your model..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {myModels?.map(m => (
+                    {availableModels?.map(m => (
                       <SelectItem key={m.id} value={m.id.toString()}>
                         <div>
                           <div className="font-bold text-sm">{m.name}</div>
-                          <div className="text-[10px] text-muted-foreground uppercase">{m.algorithmType}</div>
+                          <div className="text-[10px] text-muted-foreground uppercase">
+                            {m.algorithmType} - {m.isOwned ? "Your model" : "Marketplace"}
+                          </div>
                         </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {availableModels && availableModels.length === 0 && (
+                  <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground font-mono">
+                    Build a model or add one from Marketplace before running a prediction.
+                  </div>
+                )}
                 <Button
                   className="w-full font-bold uppercase tracking-wider text-sm"
                   onClick={handleRunPrediction}
-                  disabled={!selectedModelId || runPrediction.isPending}
+                  disabled={!selectedModelId || runPrediction.isPending || !availableModels?.length}
                 >
                   {runPrediction.isPending ? "Processing…" : "Generate Pick"}
                 </Button>

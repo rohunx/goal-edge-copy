@@ -53,7 +53,7 @@ DATABASE_URL=postgresql://postgres:password@localhost:5432/goal_edge
 ```powershell
 npm cache clean --force
 Remove-Item -Recurse -Force node_modules -ErrorAction SilentlyContinue
-Remove-Item -Force package-lock.json -ErrorAction SilentlyContinue
+Remove-Item -Force dist -ErrorAction SilentlyContinue
 npm install --verbose
 npm run dev
 ```

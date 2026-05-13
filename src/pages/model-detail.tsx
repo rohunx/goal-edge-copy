@@ -1,5 +1,5 @@
 import { useParams, Link } from "wouter";
-import { useGetModel, useGetModelPerformance, useUpdateModel } from "@/api-client";
+import { useCurrentUser, useGetModel, useGetModelPerformance, useUpdateModel } from "@/api-client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -52,6 +52,7 @@ export default function ModelDetail() {
   const modelId = parseInt(id || "0", 10);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { data: user } = useCurrentUser();
 
   const { data: model, isLoading: loadingModel } = useGetModel(modelId, {
     query: { enabled: !!modelId, queryKey: getGetModelQueryKey(modelId) },
@@ -61,7 +62,7 @@ export default function ModelDetail() {
   });
   const updateModelMutation = useUpdateModel();
 
-  const isOwner = model?.userId === 1;
+  const isOwner = Boolean(user && model?.userId === user.id);
 
   const [editingWeights, setEditingWeights] = useState(false);
   const [pendingWeights, setPendingWeights] = useState<Record<string, number>>({});

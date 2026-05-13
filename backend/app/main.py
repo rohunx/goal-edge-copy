@@ -1,24 +1,22 @@
 import random
-import os
 from datetime import datetime
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import or_, func
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
-from .auth import authenticate_user, create_access_token, get_current_user, get_password_hash
+from .auth import authenticate_user, create_access_token, get_current_user, get_optional_user, get_password_hash
 from .database import Base, engine, get_db
 from .football import sync_matches
-from .models import Match, Prediction, PredictionModel, User
+from .models import AcquiredModel, Match, Prediction, PredictionModel, User
 from .schemas import DashboardSummary, MatchRead, ModelCreate, ModelRead, PredictionRead, PredictionRun, SyncResult, Token, UserCreate, UserRead
 
 load_dotenv()
-FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN")
 app = FastAPI(title="Goal Edge API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", FRONTEND_ORIGIN],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -47,13 +45,55 @@ def match_read(m: Match) -> MatchRead:
         drawOdds=m.draw_odds, awayOdds=m.away_odds,
     )
 
-def model_read(model: PredictionModel) -> ModelRead:
+def final_outcome(match: Match) -> str | None:
+    if match.home_score is None or match.away_score is None:
+        return None
+    if match.home_score > match.away_score:
+        return "home_win"
+    if match.away_score > match.home_score:
+        return "away_win"
+    return "draw"
+
+def prediction_is_rankable(p: Prediction) -> bool:
+    return p.match.status == "finished" and p.created_at <= p.match.kickoff_time and final_outcome(p.match) is not None
+
+def refresh_model_stats(db: Session, model: PredictionModel) -> None:
+    rankable = [p for p in model.predictions if prediction_is_rankable(p)]
+    total = len(rankable)
+    correct = 0
+    for prediction in rankable:
+        actual = final_outcome(prediction.match)
+        prediction.is_correct = actual == prediction.predicted_outcome
+        if prediction.is_correct:
+            correct += 1
+    model.total_predictions = total
+    model.correct_predictions = correct
+    model.accuracy_rate = round((correct / total) * 100, 2) if total else 0
+
+def user_has_model_access(db: Session, user: User, model: PredictionModel) -> bool:
+    if model.user_id == user.id:
+        return True
+    if db.query(AcquiredModel).filter(AcquiredModel.user_id == user.id, AcquiredModel.model_id == model.id).first():
+        return True
+    return model.is_public or model.is_for_sale
+
+def user_can_run_model(db: Session, user: User, model: PredictionModel) -> bool:
+    if model.user_id == user.id:
+        return True
+    return db.query(AcquiredModel).filter(AcquiredModel.user_id == user.id, AcquiredModel.model_id == model.id).first() is not None
+
+def model_read(model: PredictionModel, current_user: User | None = None, acquired_ids: set[int] | None = None) -> ModelRead:
+    acquired_ids = acquired_ids or set()
+    is_owned = bool(current_user and model.user_id == current_user.id)
+    is_acquired = bool(model.id in acquired_ids and not is_owned)
     return ModelRead(
         id=model.id, userId=model.user_id, username=model.owner.username if model.owner else None,
         name=model.name, description=model.description, algorithmType=model.algorithm_type,
         isPublic=model.is_public, isForSale=model.is_for_sale, price=model.price,
         accuracyRate=model.accuracy_rate, correctPredictions=model.correct_predictions,
         totalPredictions=model.total_predictions, createdAt=model.created_at,
+        isOwned=is_owned, isAcquired=is_acquired,
+        accessSource="owned" if is_owned else "acquired" if is_acquired else "public",
         weightTeamForm=model.weight_team_form, weightHomeAdvantage=model.weight_home_advantage,
         weightInjuries=model.weight_injuries, weightHeadToHead=model.weight_head_to_head,
         weightPlayerStrength=model.weight_player_strength, weightMarketOdds=model.weight_market_odds,
@@ -137,17 +177,36 @@ async def sync(db: Session = Depends(get_db)):
     return await sync_matches(db)
 
 @app.get("/api/models", response_model=list[ModelRead])
-def list_models(user_id: int | None = None, db: Session = Depends(get_db)):
+def list_models(user_id: int | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    acquired_ids = {row.model_id for row in db.query(AcquiredModel).filter(AcquiredModel.user_id == user.id).all()}
     query = db.query(PredictionModel)
     if user_id:
-        query = query.filter(PredictionModel.user_id == user_id)
-    return [model_read(m) for m in query.order_by(PredictionModel.created_at.desc()).all()]
+        if user_id == user.id:
+            query = query.filter(PredictionModel.user_id == user.id)
+        else:
+            query = query.filter(PredictionModel.user_id == user_id, PredictionModel.is_public == True)
+    else:
+        query = query.filter(or_(PredictionModel.user_id == user.id, PredictionModel.id.in_(acquired_ids), PredictionModel.is_public == True))
+    models = query.order_by(PredictionModel.created_at.desc()).all()
+    for model in models:
+        refresh_model_stats(db, model)
+    db.commit()
+    return [model_read(m, user, acquired_ids) for m in models]
+
+@app.get("/api/models/available", response_model=list[ModelRead])
+def available_models(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    acquired_ids = {row.model_id for row in db.query(AcquiredModel).filter(AcquiredModel.user_id == user.id).all()}
+    models = db.query(PredictionModel).filter(or_(PredictionModel.user_id == user.id, PredictionModel.id.in_(acquired_ids))).order_by(PredictionModel.created_at.desc()).all()
+    for model in models:
+        refresh_model_stats(db, model)
+    db.commit()
+    return [model_read(m, user, acquired_ids) for m in models]
 
 @app.post("/api/models", response_model=ModelRead)
 def create_model(data: ModelCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     model = PredictionModel(
         user_id=user.id, name=data.name, description=data.description, algorithm_type=data.algorithmType,
-        is_public=data.isPublic, is_for_sale=data.isForSale, price=data.price,
+        is_public=data.isPublic, is_for_sale=data.isPublic and data.price is not None, price=data.price if data.isPublic else None,
         weight_team_form=data.weightTeamForm, weight_home_advantage=data.weightHomeAdvantage,
         weight_injuries=data.weightInjuries, weight_head_to_head=data.weightHeadToHead,
         weight_player_strength=data.weightPlayerStrength, weight_market_odds=data.weightMarketOdds,
@@ -156,14 +215,22 @@ def create_model(data: ModelCreate, user: User = Depends(get_current_user), db: 
     db.add(model)
     db.commit()
     db.refresh(model)
-    return model_read(model)
+    return model_read(model, user)
 
 @app.get("/api/models/{model_id}", response_model=ModelRead)
-def get_model(model_id: int, db: Session = Depends(get_db)):
+def get_model(model_id: int, user: User | None = Depends(get_optional_user), db: Session = Depends(get_db)):
     model = db.get(PredictionModel, model_id)
     if not model:
         raise HTTPException(404, "Model not found")
-    return model_read(model)
+    if not model.is_public and not model.is_for_sale:
+        if not user or not user_has_model_access(db, user, model):
+            raise HTTPException(404, "Model not found")
+    refresh_model_stats(db, model)
+    db.commit()
+    acquired_ids = set()
+    if user:
+        acquired_ids = {row.model_id for row in db.query(AcquiredModel).filter(AcquiredModel.user_id == user.id).all()}
+    return model_read(model, user, acquired_ids)
 
 @app.put("/api/models/{model_id}", response_model=ModelRead)
 def update_model(model_id: int, data: ModelCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -183,7 +250,7 @@ def update_model(model_id: int, data: ModelCreate, user: User = Depends(get_curr
         setattr(model, attr, value)
     db.commit()
     db.refresh(model)
-    return model_read(model)
+    return model_read(model, user)
 
 @app.delete("/api/models/{model_id}")
 def delete_model(model_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -198,7 +265,7 @@ def delete_model(model_id: int, user: User = Depends(get_current_user), db: Sess
 
 @app.get("/api/marketplace")
 def marketplace(algorithm_type: str | None = None, sort_by: str = "accuracy", db: Session = Depends(get_db)):
-    query = db.query(PredictionModel).filter(or_(PredictionModel.is_public == True, PredictionModel.is_for_sale == True))
+    query = db.query(PredictionModel).filter(PredictionModel.is_public == True)
     if algorithm_type:
         query = query.filter(PredictionModel.algorithm_type == algorithm_type)
     models = query.all()
@@ -216,15 +283,45 @@ def marketplace(algorithm_type: str | None = None, sort_by: str = "accuracy", db
         "accuracyRate": m.accuracy_rate, "totalPredictions": m.total_predictions, "price": m.price or 0,
     } for m in models]
 
+@app.post("/api/marketplace/{model_id}/copy", response_model=ModelRead)
+def copy_marketplace_model(model_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    model = db.get(PredictionModel, model_id)
+    if not model or not model.is_public:
+        raise HTTPException(404, "Model not found")
+    if model.user_id == user.id:
+        return model_read(model, user)
+    existing = db.query(AcquiredModel).filter(AcquiredModel.user_id == user.id, AcquiredModel.model_id == model.id).first()
+    if not existing:
+        db.add(AcquiredModel(user_id=user.id, model_id=model.id))
+        db.commit()
+    acquired_ids = {model.id}
+    return model_read(model, user, acquired_ids)
+
 @app.get("/api/leaderboard")
-def leaderboard(limit: int = 50, db: Session = Depends(get_db)):
-    models = db.query(PredictionModel).order_by(PredictionModel.accuracy_rate.desc()).limit(limit).all()
+def leaderboard(limit: int = 50, league: str | None = None, team: str | None = None, db: Session = Depends(get_db)):
+    models = db.query(PredictionModel).all()
+    ranked = []
+    for model in models:
+        refresh_model_stats(db, model)
+        predictions = [p for p in model.predictions if prediction_is_rankable(p)]
+        if league:
+            predictions = [p for p in predictions if p.match.league and league.lower() in p.match.league.lower()]
+        if team:
+            predictions = [p for p in predictions if team.lower() in p.match.home_team.lower() or team.lower() in p.match.away_team.lower()]
+        total = len(predictions)
+        if total == 0:
+            continue
+        correct = sum(1 for p in predictions if p.is_correct is True)
+        ranked.append((model, total, correct, round((correct / total) * 100, 2)))
+    db.commit()
+    ranked.sort(key=lambda item: (item[3], item[1]), reverse=True)
+    ranked = ranked[:limit]
     return [{
-        "rank": idx + 1, "modelId": m.id, "modelName": m.name, "username": m.owner.username if m.owner else "Unknown",
-        "algorithmType": m.algorithm_type, "accuracyRate": m.accuracy_rate,
-        "correctPredictions": m.correct_predictions, "totalPredictions": m.total_predictions,
-        "streak": (m.correct_predictions + idx) % 8,
-    } for idx, m in enumerate(models)]
+        "rank": idx + 1, "modelId": model.id, "modelName": model.name, "username": model.owner.username if model.owner else "Unknown",
+        "algorithmType": model.algorithm_type, "accuracyRate": accuracy,
+        "correctPredictions": correct, "totalPredictions": total,
+        "streak": correct if total and correct == total else 0,
+    } for idx, (model, total, correct, accuracy) in enumerate(ranked)]
 
 @app.post("/api/predictions/run", response_model=PredictionRead)
 def run_prediction(data: PredictionRun, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -232,6 +329,10 @@ def run_prediction(data: PredictionRun, user: User = Depends(get_current_user), 
     model = db.get(PredictionModel, data.modelId)
     if not match or not model:
         raise HTTPException(404, "Match or model not found")
+    if not user_can_run_model(db, user, model):
+        raise HTTPException(403, "Add this marketplace model before using it for predictions")
+    if match.status != "upcoming" or match.kickoff_time <= datetime.utcnow():
+        raise HTTPException(400, "Predictions can only be made before the match starts")
     probability = random.randint(0, 100)
     if probability >= 60:
         outcome = "home_win"
@@ -245,23 +346,41 @@ def run_prediction(data: PredictionRun, user: User = Depends(get_current_user), 
         placeholder_probability=probability, is_placeholder=True,
         disclaimer="Prediction is a placeholder - Model in Maintenance Mode",
     )
-    model.total_predictions += 1
     db.add(prediction)
     db.commit()
     db.refresh(prediction)
     return prediction_read(prediction)
 
 @app.get("/api/predictions", response_model=list[PredictionRead])
-def list_predictions(match_id: int | None = None, user_id: int | None = None, db: Session = Depends(get_db)):
+def list_predictions(match_id: int | None = None, user_id: int | None = None, user: User | None = Depends(get_optional_user), db: Session = Depends(get_db)):
     query = db.query(Prediction)
     if match_id:
         query = query.filter(Prediction.match_id == match_id)
     if user_id:
+        if user and user_id != user.id:
+            raise HTTPException(403, "You can only view your own prediction history")
         query = query.filter(Prediction.user_id == user_id)
-    return [prediction_read(p) for p in query.order_by(Prediction.created_at.desc()).limit(100).all()]
+    predictions = query.order_by(Prediction.created_at.desc()).limit(100).all()
+    for prediction in predictions:
+        if prediction_is_rankable(prediction):
+            prediction.is_correct = final_outcome(prediction.match) == prediction.predicted_outcome
+    db.commit()
+    return [prediction_read(p) for p in predictions]
 
 @app.get("/api/dashboard/summary", response_model=DashboardSummary)
-def dashboard_summary(db: Session = Depends(get_db)):
-    total = db.query(PredictionModel).count()
-    avg = db.query(func.avg(PredictionModel.accuracy_rate)).scalar() or 0
+def dashboard_summary(league: str | None = None, team: str | None = None, country: str | None = None, db: Session = Depends(get_db)):
+    query = db.query(PredictionModel)
+    total = query.count()
+    predictions = db.query(Prediction).join(Match).all()
+    predictions = [p for p in predictions if prediction_is_rankable(p)]
+    if league:
+        predictions = [p for p in predictions if p.match.league and league.lower() in p.match.league.lower()]
+    if team:
+        predictions = [p for p in predictions if team.lower() in p.match.home_team.lower() or team.lower() in p.match.away_team.lower()]
+    if country:
+        predictions = [p for p in predictions if p.match.country and country.lower() in p.match.country.lower()]
+    avg = 0
+    if predictions:
+        correct = sum(1 for p in predictions if final_outcome(p.match) == p.predicted_outcome)
+        avg = (correct / len(predictions)) * 100
     return DashboardSummary(totalModels=total, averageAccuracy=float(avg))

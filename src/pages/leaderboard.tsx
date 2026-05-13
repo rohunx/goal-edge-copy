@@ -2,8 +2,10 @@ import { useGetLeaderboard } from "@/api-client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Trophy, Flame, ChevronRight, Medal } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Trophy, Flame, ChevronRight, Search } from "lucide-react";
 import { Link } from "wouter";
+import { useState } from "react";
 
 const ALGO_COLORS: Record<string, string> = {
   bayesian: "text-blue-400 border-blue-400/30 bg-blue-400/10",
@@ -24,7 +26,13 @@ const PODIUM_COLORS = [
 const RANK_MEDALS = ["🥇", "🥈", "🥉"];
 
 export default function Leaderboard() {
-  const { data: leaderboard, isLoading } = useGetLeaderboard({ limit: 50 });
+  const [league, setLeague] = useState("");
+  const [team, setTeam] = useState("");
+  const { data: leaderboard, isLoading } = useGetLeaderboard({
+    limit: 50,
+    league: league || undefined,
+    team: team || undefined,
+  });
 
   const top3 = leaderboard?.slice(0, 3) ?? [];
   const rest = leaderboard?.slice(3) ?? [];
@@ -38,6 +46,22 @@ export default function Leaderboard() {
         </h1>
         <p className="text-muted-foreground mt-1 text-sm">The most accurate prediction models on the platform.</p>
       </div>
+
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Search className="w-4 h-4 text-primary" />
+            <span className="text-xs uppercase tracking-widest font-bold text-muted-foreground">Ranking Focus</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input value={league} onChange={(e) => setLeague(e.target.value)} placeholder="League, e.g. Premier League" />
+            <Input value={team} onChange={(e) => setTeam(e.target.value)} placeholder="Team, e.g. Arsenal" />
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-2 font-mono">
+            Rankings only include predictions made before completed matches with known final scores.
+          </p>
+        </CardContent>
+      </Card>
 
       {/* Podium — top 3 */}
       {!isLoading && top3.length >= 3 && (

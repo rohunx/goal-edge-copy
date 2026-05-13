@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Target, Activity, Zap, Dna, Shield, TrendingUp, Thermometer, Database, Brain, CheckCircle2, BarChart3 } from "lucide-react";
 import { ModelInputAlgorithmType } from "@/api-client";
@@ -16,56 +17,56 @@ const ALGORITHMS = [
   {
     value: "bayesian",
     label: "Bayesian Network",
-    desc: "Probabilistic inference using prior beliefs and match data",
-    strength: "Best for: low-data situations",
+    desc: "Starts with a sensible baseline, then adjusts as match clues come in. Good when you do not have much data yet.",
+    strength: "Pros: cautious and explainable. Cons: can be slower to adapt to surprises.",
     color: "border-blue-500/40 bg-blue-500/5 text-blue-400",
     badgeColor: "bg-blue-500/20 text-blue-400 border-blue-500/30",
   },
   {
     value: "poisson",
     label: "Poisson Distribution",
-    desc: "Goal expectancy modeling based on historic attack/defense strength",
-    strength: "Best for: goal total predictions",
+    desc: "Focuses on likely goal counts from each team, then turns that into win, draw, or loss chances.",
+    strength: "Pros: strong for scorelines and totals. Cons: less useful for messy tactical context.",
     color: "border-violet-500/40 bg-violet-500/5 text-violet-400",
     badgeColor: "bg-violet-500/20 text-violet-400 border-violet-500/30",
   },
   {
     value: "elo",
     label: "Elo Rating",
-    desc: "Zero-sum competitive rating updated after every result",
-    strength: "Best for: head-to-head matchups",
+    desc: "Rates teams like a ladder. Beating strong teams raises a team more than beating weak teams.",
+    strength: "Pros: simple and stable. Cons: can miss injuries, lineup changes, and style matchups.",
     color: "border-amber-500/40 bg-amber-500/5 text-amber-400",
     badgeColor: "bg-amber-500/20 text-amber-400 border-amber-500/30",
   },
   {
     value: "neural",
     label: "Neural Network",
-    desc: "Deep learning that finds complex non-linear patterns in data",
-    strength: "Best for: large datasets",
+    desc: "Looks for hidden patterns across many signals at once. Best when there is lots of reliable history.",
+    strength: "Pros: can catch subtle patterns. Cons: harder to explain and needs more data.",
     color: "border-pink-500/40 bg-pink-500/5 text-pink-400",
     badgeColor: "bg-pink-500/20 text-pink-400 border-pink-500/30",
   },
   {
     value: "random_forest",
     label: "Random Forest",
-    desc: "Ensemble of decision trees that votes on outcomes",
-    strength: "Best for: feature-rich predictions",
+    desc: "Asks many simple decision trees for an opinion, then combines their votes into one pick.",
+    strength: "Pros: balanced and forgiving. Cons: may be less sharp on unusual matches.",
     color: "border-emerald-500/40 bg-emerald-500/5 text-emerald-400",
     badgeColor: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
   },
   {
     value: "ensemble",
     label: "Ensemble Method",
-    desc: "Combines multiple algorithms for maximum robustness",
-    strength: "Best for: overall accuracy",
+    desc: "Blends several model styles so one weak signal does not dominate the final prediction.",
+    strength: "Pros: reliable all-rounder. Cons: less specialized than a focused model.",
     color: "border-orange-500/40 bg-orange-500/5 text-orange-400",
     badgeColor: "bg-orange-500/20 text-orange-400 border-orange-500/30",
   },
   {
     value: "linear",
     label: "Linear Regression",
-    desc: "Simple weighted combination of predictive factors",
-    strength: "Best for: interpretability",
+    desc: "Uses your sliders directly: higher-weighted factors have more influence on the pick.",
+    strength: "Pros: easiest to understand. Cons: can miss complex interactions between teams.",
     color: "border-cyan-500/40 bg-cyan-500/5 text-cyan-400",
     badgeColor: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
   },
@@ -97,6 +98,8 @@ export default function Builder() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [algorithm, setAlgorithm] = useState<ModelInputAlgorithmType>("ensemble");
+  const [isPublic, setIsPublic] = useState(true);
+  const [price, setPrice] = useState("0");
   const [weights, setWeights] = useState<Record<string, number>>(
     FACTORS.reduce((acc, f) => ({ ...acc, [f.id]: 50 }), {})
   );
@@ -111,10 +114,18 @@ export default function Builder() {
       return;
     }
     createModelMutation.mutate({
-      data: { userId: 1, name, description, algorithmType: algorithm, isPublic: true, ...weights }
+      data: {
+        name,
+        description,
+        algorithmType: algorithm,
+        isPublic,
+        isForSale: isPublic,
+        price: isPublic ? Number(price || 0) : null,
+        ...weights,
+      }
     }, {
       onSuccess: (model) => {
-        toast({ title: "Model deployed!", description: `${name} is ready to predict.` });
+        toast({ title: "Model deployed!", description: `${name} is ready in My Models.` });
         setLocation(`/model/${model.id}`);
       },
       onError: () => toast({ title: "Error", description: "Failed to create model.", variant: "destructive" })
@@ -157,6 +168,51 @@ export default function Builder() {
                   rows={2}
                   className="resize-none text-sm"
                 />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="uppercase tracking-wider text-xs text-muted-foreground">Visibility</CardTitle>
+              <CardDescription className="text-xs">Choose who can find and use this model after deployment.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsPublic(false)}
+                  className={`text-left rounded-lg border p-4 transition-all ${!isPublic ? "border-primary bg-primary/10" : "border-border bg-muted/20 hover:border-muted-foreground/30"}`}
+                >
+                  <div className="font-bold text-sm">Private</div>
+                  <div className="text-xs text-muted-foreground mt-1">Only you can see it, manage it, and use it for match predictions.</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPublic(true)}
+                  className={`text-left rounded-lg border p-4 transition-all ${isPublic ? "border-primary bg-primary/10" : "border-border bg-muted/20 hover:border-muted-foreground/30"}`}
+                >
+                  <div className="font-bold text-sm">Public Marketplace</div>
+                  <div className="text-xs text-muted-foreground mt-1">Other users can discover it and add it to their match toolkit.</div>
+                </button>
+              </div>
+              {isPublic && (
+                <div className="max-w-xs space-y-1.5">
+                  <Label htmlFor="price" className="text-sm font-semibold">Marketplace Price</Label>
+                  <Input
+                    id="price"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    className="font-mono"
+                  />
+                </div>
+              )}
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Switch checked={isPublic} onCheckedChange={setIsPublic} />
+                <span>{isPublic ? "Public models can appear in Marketplace." : "Private models stay in your account only."}</span>
               </div>
             </CardContent>
           </Card>

@@ -1,4 +1,4 @@
-import { useListLiveMatches, useListMatches, useSyncMatches, getListLiveMatchesQueryKey, getListMatchesQueryKey } from "@/api-client";
+import { useGetDashboardSummary, useListLiveMatches, useListMatches, useSyncMatches, getListLiveMatchesQueryKey, getListMatchesQueryKey } from "@/api-client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -163,9 +163,15 @@ export default function Home() {
   const [syncing, setSyncing] = useState(false);
   const [team, setTeam] = useState("");
   const [league, setLeague] = useState("");
+  const [country, setCountry] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const syncMutation = useSyncMatches();
+  const { data: filteredSummary } = useGetDashboardSummary({
+    league: league || undefined,
+    team: team || undefined,
+    country: country || undefined,
+  });
 
   const { data: liveMatches, isLoading: loadingLive, dataUpdatedAt } = useListLiveMatches({
     query: { queryKey: getListLiveMatchesQueryKey(), refetchInterval: 30_000 }
@@ -174,6 +180,7 @@ export default function Home() {
     status: "upcoming" as const,
     team: team || undefined,
     league: league || undefined,
+    country: country || undefined,
     dateFrom: dateFrom ? new Date(dateFrom).toISOString() : undefined,
     dateTo: dateTo ? new Date(dateTo + "T23:59:59").toISOString() : undefined,
   };
@@ -184,6 +191,11 @@ export default function Home() {
 
   const todayMatches = upcomingMatches?.filter(m => isToday(new Date(m.kickoffTime))) ?? [];
   const laterMatches = upcomingMatches?.filter(m => !isToday(new Date(m.kickoffTime))) ?? [];
+  const matchesByLeague = laterMatches.slice(0, 24).reduce<Record<string, any[]>>((groups, match) => {
+    const key = match.league || "Other";
+    groups[key] = [...(groups[key] ?? []), match];
+    return groups;
+  }, {});
 
   const handleSync = () => {
     setSyncing(true);
@@ -221,13 +233,22 @@ export default function Home() {
 
       <Card>
         <CardContent className="p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Search className="w-4 h-4 text-primary" />
-            <span className="text-xs uppercase tracking-widest font-bold text-muted-foreground">Database Search</span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2">
+              <Search className="w-4 h-4 text-primary" />
+              <span className="text-xs uppercase tracking-widest font-bold text-muted-foreground">Dashboard Focus</span>
+            </div>
+            {filteredSummary && (
+              <div className="flex gap-2 text-[10px] font-mono text-muted-foreground">
+                <span className="bg-muted rounded px-2 py-1">{filteredSummary.totalModels} models</span>
+                <span className="bg-muted rounded px-2 py-1">{filteredSummary.averageAccuracy.toFixed(1)}% verified accuracy</span>
+              </div>
+            )}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
             <Input value={team} onChange={(e) => setTeam(e.target.value)} placeholder="Search team" />
             <Input value={league} onChange={(e) => setLeague(e.target.value)} placeholder="Filter league" />
+            <Input value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Country" />
             <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
             <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
           </div>
@@ -269,11 +290,23 @@ export default function Home() {
           count={laterMatches.length || undefined}
           color="text-muted-foreground"
         />
-        <MatchGrid
-          matches={laterMatches.slice(0, 18)}
-          loading={loadingUpcoming && todayMatches.length === 0}
-          empty="No upcoming matches found."
-        />
+        {loadingUpcoming && todayMatches.length === 0 ? (
+          <MatchGrid matches={[]} loading={true} empty="No upcoming matches found." />
+        ) : Object.keys(matchesByLeague).length > 0 ? (
+          <div className="space-y-6">
+            {Object.entries(matchesByLeague).map(([leagueName, matches]) => (
+              <div key={leagueName} className="space-y-3">
+                <div className="flex items-center justify-between border-b border-border pb-2">
+                  <h3 className="text-sm font-black uppercase tracking-wider">{leagueName}</h3>
+                  <span className="text-[10px] font-mono text-muted-foreground">{matches.length} matches</span>
+                </div>
+                <MatchGrid matches={matches} loading={false} empty="No upcoming matches found." />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <MatchGrid matches={[]} loading={false} empty="No upcoming matches found." />
+        )}
       </section>
     </div>
   );
